@@ -69,7 +69,7 @@ const handleUpvote = async () => {
     return;
   }
 
-  await apiClient.comment.upvote(target, targetId, props.reply.id);
+  await apiClient.comment.upvote(props.reply.id);
 
   upvotedReplies.value.push(props.reply.id);
 

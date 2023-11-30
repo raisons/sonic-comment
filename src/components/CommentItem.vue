@@ -111,7 +111,7 @@ const handleUpvote = async () => {
     return;
   }
 
-  await apiClient.comment.upvote(target, targetId, props.comment.id);
+  await apiClient.comment.upvote(props.comment.id);
 
   upvotedComments.value.push(props.comment.id);
 

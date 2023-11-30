@@ -1,15 +1,13 @@
 <script lang="ts" setup>
-import { VButton, Dialog, VLoading } from "@halo-dev/components";
+import { VButton, VLoading, VDialog } from "@halo-dev/components";
 import MdiStickerEmoji from "~icons/mdi/sticker-emoji";
 import MdiSendCircleOutline from "~icons/mdi/send-circle-outline";
-import type {
-  User,
-} from "@halo-dev/api-client";
 // @ts-ignore
 import { Picker, EmojiIndex } from "emoji-mart-vue-fast/src";
 import "emoji-mart-vue-fast/css/emoji-mart.css";
-import { inject, ref, type Ref } from "vue";
+import { inject, ref } from "vue";
 import { apiClient } from "@/utils/api-client";
+import { validateEmail, validateUrl } from "@/utils/validators"
 import { useLocalStorage } from "@vueuse/core";
 import { onClickOutside } from "@vueuse/core";
 import autosize from "autosize";
@@ -36,14 +34,10 @@ const emit = defineEmits<{
   (event: "created"): void;
 }>();
 
-const currentUser = inject<Ref<User | undefined>>("currentUser");
 const target = inject<commentTargets>("target");
 const targetId = inject<number>("targetId");
 const emojiData = inject<() => Promise<any>>("emojiData", () =>
   Promise.resolve()
-);
-const allowAnonymousComments = inject<Ref<boolean | undefined>>(
-  "allowAnonymousComments"
 );
 
 const raw = ref("");
@@ -64,11 +58,28 @@ const customAccount = useLocalStorage<CustomAccount>(
   }
 );
 
+const auditingDialogVisible = ref<Boolean>(false);
+const handleAuditingDialogClose = () => {
+  auditingDialogVisible.value = false;
+  emit("created");
+}
+
 const handleSubmit = async () => {
   if (!target || !targetId) {
     console.error("Please provide target and targetId");
     return;
   }
+
+  if (!validateEmail(customAccount.value.email)) {
+    alert("email格式不正确!");
+    return;
+  }
+
+  if (customAccount.value.authorUrl && !validateUrl(customAccount.value.authorUrl)) {
+    alert("网站必须以http://或https://开头");
+    return
+  }
+
   try {
     saving.value = true;
 
@@ -84,19 +95,18 @@ const handleSubmit = async () => {
       req_params.parentId = props.comment.id;
     }
 
-    await apiClient.comment.create(target, req_params);
-    raw.value = "";
-    emit("created");
+    const { data } = await apiClient.comment.create(target, req_params);
+    if (data.status === "AUDITING") {
+      auditingDialogVisible.value = true;
+    } else {
+      emit("created");
+    }
+
   } catch (error) {
     console.error("Failed to create comment", error);
   } finally {
+    raw.value = "";
     saving.value = false;
-
-    Dialog.info({
-      title: "评论成功",
-      description: "请等待博主审核，审核通过后显示。",
-      showCancel: false,
-    });
   }
 };
 
@@ -121,7 +131,7 @@ async function handleOpenEmojiPicker() {
   emojiLoading.value = true;
 
   if (!emojiData) {
-    alert("加载 Emoji 数据失败");
+    alert("未设置emoji库");
     emojiLoading.value = false;
     return;
   }
@@ -129,8 +139,8 @@ async function handleOpenEmojiPicker() {
   const data = await emojiData();
 
   if (!data) {
-    alert("加载 Emoji 数据失败");
     emojiLoading.value = false;
+    return;
   }
 
   emojiIndex.value = new EmojiIndex(data);
@@ -161,17 +171,6 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault();
   }
 }
-
-// login
-const parentDomId = `#comment-${targetId}`;
-
-const loginUrl = `/console/login?redirect_uri=${encodeURIComponent(
-  window.location.href + parentDomId
-)}`;
-
-function handleOpenLoginPage() {
-  window.location.href = loginUrl;
-}
 </script>
 
 <template>
@@ -187,10 +186,7 @@ function handleOpenLoginPage() {
         placeholder="编写评论"
       ></textarea>
 
-      <div
-        v-if="!currentUser && allowAnonymousComments"
-        class="grid grid-cols-1 items-center gap-2 sm:grid-cols-4"
-      >
+      <div class="grid grid-cols-1 items-center gap-2 sm:grid-cols-4">
         <input
           v-model="customAccount.author"
           class="rounded-base h-9 px-2 py-0.5 text-sm outline-none ring-1 ring-gray-300 dark:bg-slate-700 dark:text-slate-50 dark:ring-slate-600"
@@ -207,7 +203,7 @@ function handleOpenLoginPage() {
           v-model="customAccount.authorUrl"
           class="rounded-base h-9 px-2 py-0.5 text-sm outline-none ring-1 ring-gray-300 dark:bg-slate-700 dark:text-slate-50 dark:ring-slate-600"
           type="url"
-          placeholder="网站"
+          placeholder="网站(http://、https://)"
         />
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -254,22 +250,18 @@ function handleOpenLoginPage() {
             </VButton>
           </div>
         </div>
-
       </div>
+    </div>
+    <div class="dialog-container">
+      <VDialog
+          type="info"
+          title="评论成功"
+          description="请等待博主审核，审核通过后显示。"
+          confirm-type="secondary"
+          :show-cancel="false"
+          :visible="auditingDialogVisible"
+          @close="handleAuditingDialogClose"
+      ></VDialog>
     </div>
   </div>
 </template>
-
-<style lang="css">
-.dialog-container .btn-md {
-  height: 1.75rem;
-  padding-left: .75rem;
-  padding-right: .75rem;
-  font-size: .75rem;
-  line-height: 1rem;
-}
-
-.dialog-container .btn-primary {
-  background-color: rgba(var(--colors-secondary),var(--tw-bg-opacity))!important;
-}
-</style>

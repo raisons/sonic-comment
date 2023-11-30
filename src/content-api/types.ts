@@ -129,6 +129,7 @@ export type BaseComment = {
   isAdmin: boolean
   allowNotification: boolean
   createTime: number
+  avatar: string;
   likes: number
 }
 

@@ -98,16 +98,16 @@ export class CommentClient {
      * @param target posts, sheets, or journals
      * @param params the comment params
      */
-    public create(target: commentTargets, params: BaseCommentParam) {
+    public create(target: commentTargets, params: BaseCommentParam): Promise<Response<BaseComment>> {
         const path = buildPath({
             endpointName: `${target}/comments`,
         })
         return this.client.post(path, params)
     }
 
-    public upvote(target: commentTargets, targetId: number, commentId: number) {
+    public upvote(commentId: number) {
         const path = buildPath({
-            endpointName: `${target}/${targetId}/comments/${commentId}/likes`,
+            endpointName: `comments/${commentId}/likes`,
         })
         return this.client.post(path)
     }

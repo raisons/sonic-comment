@@ -105,8 +105,11 @@ export function init(
             targetId: params.targetId,
             colorScheme: params.colorScheme,
             emojiData: async () => {
-                const { data } = await axios.get(params.emoji);
-                return data;
+                if (params.emoji) {
+                    const { data } = await axios.get(params.emoji);
+                    return data;
+                }
+                alert("未设置emoji库");
             },
         });
         app.mount(root);

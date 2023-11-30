@@ -16,3 +16,10 @@
 .fade-leave-to {
   @apply opacity-0;
 }
+.dialog-container .btn-md {
+  height: 1.75rem;
+  padding-left: .75rem;
+  padding-right: .75rem;
+  font-size: .75rem;
+  line-height: 1rem;
+}

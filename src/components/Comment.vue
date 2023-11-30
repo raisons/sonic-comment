@@ -9,7 +9,6 @@ import {
 import CommentItem from "./CommentItem.vue";
 import Form from "./Form.vue";
 import { computed, onMounted, provide, ref, type Ref } from "vue";
-import type { User } from "@halo-dev/api-client";
 import { apiClient } from "@/utils/api-client";
 import type { CommentVoList, commentTargets } from "@/types";
 import { useLocalStorage } from "@vueuse/core";
@@ -32,8 +31,6 @@ provide<number>("targetId", props.targetId);
 provide<string>("colorScheme", props.colorScheme);
 provide<() => Promise<any>>("emojiData", props.emojiData);
 
-const currentUser = ref<User>();
-
 const comments = ref<CommentVoList>({
   hasContent: false,
   hasNext: false,
@@ -48,19 +45,6 @@ const comments = ref<CommentVoList>({
 });
 const pageSize = ref(10);
 const loading = ref(false);
-
-provide<Ref<User | undefined>>("currentUser", currentUser);
-
-const handleFetchLoggedUser = async () => {
-  // currentUser.value = undefined;
-  // try {
-  //   const { data } = await apiClient.user.getCurrentUserDetail();
-  //   currentUser.value =
-  //     data.user.metadata.name === "anonymousUser" ? undefined : data.user;
-  // } catch (error) {
-  //   console.error("Fetch logined user failed", error);
-  // }
-};
 
 const handleFetchComments = async (mute?: boolean) => {
   try {
@@ -96,7 +80,6 @@ const handlePaginationChange = ({
 };
 
 onMounted(() => {
-  handleFetchLoggedUser();
   handleFetchComments();
 });
 
@@ -113,26 +96,7 @@ const getColorScheme = computed(() => {
   return props.colorScheme;
 });
 
-// fetch value of allowAnonymousComments
-
-const allowAnonymousComments = ref<boolean | undefined>(false);
-
-provide<Ref<Boolean | undefined>>(
-  "allowAnonymousComments",
-  allowAnonymousComments
-);
-
-const handleFetchValueOfAllowAnonymousComments = async () => {
-  // const { data } = await axios.get<GlobalInfo>(`/actuator/globalinfo`, {
-  //   withCredentials: true,
-  // });
-  allowAnonymousComments.value = true;
-};
-
-onMounted(handleFetchValueOfAllowAnonymousComments);
-
 // upvote
-
 const upvotedComments = useLocalStorage<string[]>("halo.upvoted.comments", []);
 const upvotedReplies = useLocalStorage<string[]>("halo.upvoted.replies", []);
 provide<Ref<string[]>>("upvotedComments", upvotedComments);

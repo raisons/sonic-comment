@@ -19,13 +19,8 @@ declare type commentTargets = "posts" | "sheets" | "journals";
 
 type BaseCommentVo = BaseComment
 
-interface CommentVo extends CommentWithHasChildren {
-  avatar: string;
-}
+type CommentVo = CommentWithHasChildren
 
 type CommentVoList = Page<CommentVo>;
 
-interface ReplyVo extends BaseCommentVo{
-  avatar: string;
-}
-
+type ReplyVo = BaseCommentVo
