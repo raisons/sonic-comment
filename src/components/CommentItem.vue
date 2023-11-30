@@ -9,7 +9,7 @@ import {
   VLoading,
 } from "@halo-dev/components";
 import Form from "./Form.vue";
-import type { CommentVo, ReplyVo } from "@halo-dev/api-client";
+import type { CommentVo, ReplyVo, commentTargets } from "@/types";
 import { computed, provide, ref, watch, inject, type Ref } from "vue";
 import { apiClient } from "@/utils/api-client";
 import { formatDatetime, timeAgo } from "@/utils/date";
@@ -20,7 +20,7 @@ import MdiCommentQuote from "~icons/mdi/comment-quote";
 
 const props = withDefaults(
   defineProps<{
-    comment?: CommentVo;
+    comment: CommentVo;
   }>(),
   {
     comment: undefined,
@@ -31,6 +31,8 @@ const emit = defineEmits<{
   (event: "reload"): void;
 }>();
 
+const target = inject<commentTargets>("target");
+const targetId = inject<number>("targetId")
 const showReplies = ref(false);
 const showForm = ref(false);
 
@@ -61,8 +63,7 @@ const website = computed(() => {
   if (!props.comment) {
     return "";
   }
-  const { annotations } = props.comment.spec.owner;
-  return annotations?.website;
+  return props.comment.authorUrl;
 });
 
 const handleFetchReplies = async (mute?: boolean) => {
@@ -70,10 +71,11 @@ const handleFetchReplies = async (mute?: boolean) => {
     if (!mute) {
       loading.value = true;
     }
-    const { data } = await apiClient.comment.listCommentReplies({
-      name: props.comment?.metadata.name as string,
-    });
-    replies.value = data.items;
+    apiClient.comment
+      .listChildren(target, targetId, props.comment.id)
+      .then((response) => {
+        replies.value = response.data;
+      });
   } catch (error) {
     console.error("Failed to fetch comment replies", error);
   } finally {
@@ -99,37 +101,31 @@ const onReplyCreated = () => {
 };
 
 // upvote
-const upvotedComments = inject<Ref<string[]>>("upvotedComments", ref([]));
+const upvotedComments = inject<Ref<number[]>>("upvotedComments", ref([]));
 const handleUpvote = async () => {
   if (!props.comment) {
     return;
   }
 
-  if (upvotedComments.value.includes(props.comment.metadata.name)) {
+  if (upvotedComments.value.includes(props.comment.id)) {
     return;
   }
 
-  await apiClient.tracker.upvote({
-    voteRequest: {
-      name: props.comment.metadata.name,
-      plural: "comments",
-      group: "content.halo.run",
-    },
-  });
+  await apiClient.comment.upvote(target, targetId, props.comment.id);
 
-  upvotedComments.value.push(props.comment.metadata.name);
+  upvotedComments.value.push(props.comment.id);
 
   emit("reload");
 };
 </script>
 
 <template>
-  <div :id="`comment-${comment?.metadata.name}`" class="comment-item py-4">
+  <div :id="`comment-${comment?.id}`" class="comment-item py-4">
     <div class="flex flex-row gap-3">
       <div class="comment-avatar">
         <VAvatar
-          :src="comment?.owner?.avatar"
-          :alt="comment?.owner?.displayName"
+          :src="comment?.avatar"
+          :alt="comment?.author"
           size="sm"
           circle
         />
@@ -144,23 +140,17 @@ const handleUpvote = async () => {
                 :href="website"
                 target="_blank"
               >
-                {{ comment?.owner.displayName }}
+                {{ comment?.author }}
               </a>
               <span v-else>
-                {{ comment?.owner.displayName }}
+                {{ comment?.author }}
               </span>
             </div>
             <span
               class="text-xs text-gray-500 dark:text-slate-400"
-              :title="formatDatetime(comment?.spec.creationTime)"
+              :title="formatDatetime(comment?.createTime)"
             >
-              {{ timeAgo(comment?.spec.creationTime) }}
-            </span>
-            <span
-              v-if="!comment?.spec.approved"
-              class="text-xs text-gray-500 dark:text-slate-400"
-            >
-              审核中
+              {{ timeAgo(comment?.createTime) }}
             </span>
             <VTag
               v-if="isAuthor"
@@ -174,7 +164,7 @@ const handleUpvote = async () => {
         <div class="comment-content mt-2">
           <pre
             class="whitespace-pre-wrap break-words text-sm text-gray-800 dark:text-slate-200"
-            >{{ comment?.spec.content }}</pre
+            >{{ comment?.content }}</pre
           >
         </div>
         <div class="comment-actions mt-2 flex flex-auto items-center gap-1.5">
@@ -183,7 +173,7 @@ const handleUpvote = async () => {
             @click="handleUpvote()"
           >
             <MdiCardsHeartOutline
-              v-if="!upvotedComments.includes(comment?.metadata.name as string)"
+              v-if="!upvotedComments.includes(comment?.id as number)"
               class="h-3.5 w-3.5 hover:text-red-600 hover:dark:text-red-400"
             />
             <MdiCardsHeart
@@ -191,7 +181,7 @@ const handleUpvote = async () => {
               class="h-3.5 w-3.5 text-red-600 dark:text-red-400"
             />
             <span>
-              {{ comment?.stats.upvote }}
+              {{ comment?.likes }}
             </span>
           </div>
           <span class="text-gray-600">·</span>
@@ -201,7 +191,7 @@ const handleUpvote = async () => {
           >
             <MdiCommentQuoteOutline v-if="!showReplies" class="h-3.5 w-3.5" />
             <MdiCommentQuote v-else class="h-3.5 w-3.5" />
-            <span> {{ comment?.status?.visibleReplyCount || 0 }} </span>
+            <span> {{ comment?.childrenCount || 0 }} </span>
           </div>
           <span class="text-gray-600">·</span>
           <span
@@ -250,7 +240,6 @@ const handleUpvote = async () => {
                 v-for="(reply, index) in replies"
                 :key="index"
                 :class="{ '!pt-2': index === 1 }"
-                :comment="comment"
                 :reply="reply"
                 :replies="replies"
                 @reload="handleFetchReplies(true)"

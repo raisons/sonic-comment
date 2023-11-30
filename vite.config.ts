@@ -22,27 +22,45 @@ export default defineConfig({
       verbose: true,
     }),
   ],
+  define: {
+    "process.env": process.env,
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   build: {
+    outDir: fileURLToPath(new URL("./dist", import.meta.url)),
     emptyOutDir: false,
+    cssCodeSplit: false,
     lib: {
-      entry: path.resolve(__dirname, "src/index.ts"),
-      name: "HaloCommentWidget",
-      formats: ["es", "iife"],
-      fileName: (format) => `halo-comment-widget.${format}.js`,
+      entry: path.resolve(__dirname, "src/build.ts"),
+      name: "SonicComment",
+      formats: ["iife"],
+      fileName: (format) => `sonic-comment.${format}.js`,
     },
+    sourcemap: false,
     rollupOptions: {
-      external: ["vue", "vue-router"],
+      external: ["vue"],
       output: {
+        assetFileNames: "sonic-comment.[ext]",
         globals: {
           vue: "Vue",
-          "vue-router": "VueRouter",
         },
         exports: "named",
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ["vue"],
+  },
+  server: {
+    port: 4000,
+    proxy: {
+      "/actuator": {
+        target: "http://localhost:8090",
+        changeOrigin: true,
       },
     },
   },

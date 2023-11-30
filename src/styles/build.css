@@ -1,0 +1,9 @@
+:host {
+    --colors-primary: 76, 203, 160;
+    --colors-secondary: 14, 23, 49;
+    --borderRadius-base: 4px;
+}
+
+.sonic-comment-widget {
+    font-family: ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,"Apple Color Emoji","Segoe UI Emoji",Segoe UI Symbol,"Noto Color Emoji";
+}

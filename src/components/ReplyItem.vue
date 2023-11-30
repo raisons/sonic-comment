@@ -1,16 +1,16 @@
 <script lang="ts" setup>
 import { VTag, VAvatar } from "@halo-dev/components";
 import Form from "./Form.vue";
-import type { CommentVo, ReplyVo } from "@halo-dev/api-client";
+import type { ReplyVo, commentTargets } from "@/types";
 import { computed, inject, ref, type Ref } from "vue";
 import { formatDatetime, timeAgo } from "@/utils/date";
 import MdiReply from "~icons/mdi/reply";
-import { apiClient } from "@/utils/api-client";
 import MdiCardsHeart from "~icons/mdi/cards-heart";
 import MdiCardsHeartOutline from "~icons/mdi/cards-heart-outline";
 
+import { apiClient } from "@/utils/api-client";
+
 const props = defineProps<{
-  comment?: CommentVo;
   reply: ReplyVo;
   replies: ReplyVo[];
 }>();
@@ -19,24 +19,25 @@ const emit = defineEmits<{
   (event: "reload"): void;
 }>();
 
+const target = inject<commentTargets>("target");
+const targetId = inject<number>("targetId")
 const showForm = ref(false);
 
 const website = computed(() => {
   if (!props.reply) {
     return "";
   }
-  const { annotations } = props.reply.spec.owner;
-  return annotations?.website;
+  props.reply.authorUrl;
 });
 
 const quoteReply = computed(() => {
-  const { quoteReply: replyName } = props.reply.spec;
+  const replyName = props.reply.author;
 
   if (!replyName) {
     return undefined;
   }
 
-  return props.replies.find((reply) => reply.metadata.name === replyName);
+  return props.replies.find((reply) => reply.author === replyName);
 });
 
 const onReplyCreated = () => {
@@ -54,29 +55,23 @@ const handleShowQuoteReply = (show: boolean) => {
 };
 
 const isHoveredReply = computed(() => {
-  return hoveredReply?.value?.metadata.name === props.reply.metadata.name;
+  return hoveredReply?.value?.id === props.reply.id;
 });
 
 // upvote
-const upvotedReplies = inject<Ref<string[]>>("upvotedReplies", ref([]));
+const upvotedReplies = inject<Ref<number[]>>("upvotedReplies", ref([]));
 const handleUpvote = async () => {
   if (!props.reply) {
     return;
   }
 
-  if (upvotedReplies.value.includes(props.reply.metadata.name)) {
+  if (upvotedReplies.value.includes(props.reply.id)) {
     return;
   }
 
-  await apiClient.tracker.upvote({
-    voteRequest: {
-      name: props.reply.metadata.name,
-      plural: "replies",
-      group: "content.halo.run",
-    },
-  });
+  await apiClient.comment.upvote(target, targetId, props.reply.id);
 
-  upvotedReplies.value.push(props.reply.metadata.name);
+  upvotedReplies.value.push(props.reply.id);
 
   emit("reload");
 };
@@ -84,15 +79,15 @@ const handleUpvote = async () => {
 
 <template>
   <div
-    :id="`reply-${reply.metadata.name}`"
+    :id="`reply-${reply.id}`"
     class="reply-item py-3"
     :class="{ 'animate-breath': isHoveredReply }"
   >
     <div class="flex flex-row gap-3">
       <div class="reply-avatar">
         <VAvatar
-          :src="reply?.owner?.avatar"
-          :alt="reply?.owner?.displayName"
+          :src="reply?.avatar"
+          :alt="reply?.author"
           size="sm"
           circle
         />
@@ -107,23 +102,17 @@ const handleUpvote = async () => {
                 :href="website"
                 target="_blank"
               >
-                {{ reply?.owner.displayName }}
+                {{ reply?.author }}
               </a>
               <span v-else>
-                {{ reply?.owner.displayName }}
+                {{ reply?.author }}
               </span>
             </div>
             <span
               class="text-xs text-gray-500 dark:text-slate-400"
-              :title="formatDatetime(reply.spec.creationTime)"
+              :title="formatDatetime(reply.createTime)"
             >
-              {{ timeAgo(reply.spec.creationTime) }}
-            </span>
-            <span
-              v-if="!reply?.spec.approved"
-              class="text-xs text-gray-500 dark:text-slate-400"
-            >
-              审核中
+              {{ timeAgo(reply.createTime) }}
             </span>
             <VTag
               v-if="false"
@@ -140,14 +129,14 @@ const handleUpvote = async () => {
           ><a
               v-if="quoteReply"
               class="mr-1 inline-flex flex-row items-center gap-1 rounded bg-gray-200 py-0.5 px-1 text-xs font-medium text-gray-600 hover:text-blue-500 hover:underline dark:bg-slate-700 dark:text-slate-200 dark:hover:text-slate-100"
-              :href="`#reply-${quoteReply.metadata.name}`"
+              :href="`#reply-${quoteReply.id}`"
               @mouseenter="handleShowQuoteReply(true)"
               @mouseleave="handleShowQuoteReply(false)"
             >
               <MdiReply />
-              <span>{{ quoteReply.owner.displayName }}</span>
+              <span>{{ quoteReply.author }}</span>
             </a><br v-if="quoteReply" />{{
-              reply.spec.content
+              reply.content
             }}</pre>
         </div>
         <div class="reply-actions mt-2 flex flex-auto items-center gap-1">
@@ -156,7 +145,7 @@ const handleUpvote = async () => {
             @click="handleUpvote()"
           >
             <MdiCardsHeartOutline
-              v-if="!upvotedReplies.includes(reply?.metadata.name as string)"
+              v-if="!upvotedReplies.includes(reply?.id as number)"
               class="h-3.5 w-3.5 hover:text-red-600 hover:dark:text-red-400"
             />
             <MdiCardsHeart
@@ -164,7 +153,7 @@ const handleUpvote = async () => {
               class="h-3.5 w-3.5 text-red-600 dark:text-red-400"
             />
             <span>
-              {{ reply.stats.upvote }}
+              {{ reply.likes }}
             </span>
           </div>
           <span class="text-gray-600">·</span>
@@ -178,8 +167,7 @@ const handleUpvote = async () => {
         <Form
           v-if="showForm"
           class="mt-2"
-          :comment="comment"
-          :reply="reply"
+          :comment="reply"
           @created="onReplyCreated"
         />
       </div>

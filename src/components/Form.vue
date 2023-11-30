@@ -1,12 +1,8 @@
 <script lang="ts" setup>
-import { VButton, VAvatar, VLoading } from "@halo-dev/components";
+import { VButton, Dialog, VLoading } from "@halo-dev/components";
 import MdiStickerEmoji from "~icons/mdi/sticker-emoji";
 import MdiSendCircleOutline from "~icons/mdi/send-circle-outline";
 import type {
-  CommentRequest,
-  CommentVo,
-  ReplyRequest,
-  ReplyVo,
   User,
 } from "@halo-dev/api-client";
 // @ts-ignore
@@ -15,25 +11,24 @@ import "emoji-mart-vue-fast/css/emoji-mart.css";
 import { inject, ref, type Ref } from "vue";
 import { apiClient } from "@/utils/api-client";
 import { useLocalStorage } from "@vueuse/core";
-import axios from "axios";
 import { onClickOutside } from "@vueuse/core";
 import autosize from "autosize";
 import { isMac } from "@/utils/device";
+import type { commentTargets, BaseCommentVo } from "@/types"
+import type { BaseCommentParam } from "@/content-api";
 
 interface CustomAccount {
-  displayName: string;
+  author: string;
   email: string;
-  website?: string;
+  authorUrl: string;
 }
 
 const props = withDefaults(
   defineProps<{
-    comment?: CommentVo;
-    reply?: ReplyVo;
+    comment?: BaseCommentVo;
   }>(),
   {
     comment: undefined,
-    reply: undefined,
   }
 );
 
@@ -42,9 +37,8 @@ const emit = defineEmits<{
 }>();
 
 const currentUser = inject<Ref<User | undefined>>("currentUser");
-const kind = inject<string>("kind");
-const name = inject<string>("name");
-const group = inject<string>("group");
+const target = inject<commentTargets>("target");
+const targetId = inject<number>("targetId");
 const emojiData = inject<() => Promise<any>>("emojiData", () =>
   Promise.resolve()
 );
@@ -53,7 +47,6 @@ const allowAnonymousComments = inject<Ref<boolean | undefined>>(
 );
 
 const raw = ref("");
-const allowNotification = ref(true);
 const saving = ref(false);
 
 const vAutosize = {
@@ -63,139 +56,47 @@ const vAutosize = {
 };
 
 const customAccount = useLocalStorage<CustomAccount>(
-  "halo-comment-custom-account",
+  "sonic-comment-custom-account",
   {
-    displayName: "",
+    author: "",
     email: "",
-    website: "",
+    authorUrl: "",
   }
 );
 
 const handleSubmit = async () => {
-  if (!props.comment) {
-    handleCreateComment();
-    return;
-  }
-  handleCreateReply();
-};
-
-const handleCreateComment = async () => {
-  if (!kind || !name) {
-    console.error("Please provide kind and name");
+  if (!target || !targetId) {
+    console.error("Please provide target and targetId");
     return;
   }
   try {
     saving.value = true;
 
-    const commentRequest: CommentRequest = {
-      raw: raw.value,
+    let req_params:BaseCommentParam = {
+      author: customAccount.value.author,
+      email: customAccount.value.email,
+      authorUrl: customAccount.value.authorUrl,
       content: raw.value,
-      allowNotification: allowNotification.value,
-      subjectRef: {
-        group: group,
-        kind,
-        name,
-        version: "v1alpha1",
-      },
-    };
-
-    const { displayName, email, website } = customAccount.value;
-
-    if (!currentUser?.value && !allowAnonymousComments?.value) {
-      alert("请先登录");
-      return;
+      postId: targetId,
     }
 
-    if (!currentUser?.value && allowAnonymousComments?.value) {
-      if (!displayName || !email) {
-        alert("请先登录或者完善信息");
-        return;
-      } else {
-        commentRequest.owner = {
-          displayName: displayName,
-          email: email,
-          website: website,
-        };
-      }
+    if (props.comment) {
+      req_params.parentId = props.comment.id;
     }
 
-    await apiClient.comment.createComment1({
-      commentRequest,
-    });
+    await apiClient.comment.create(target, req_params);
     raw.value = "";
-
     emit("created");
   } catch (error) {
     console.error("Failed to create comment", error);
   } finally {
     saving.value = false;
-  }
-};
 
-const handleCreateReply = async () => {
-  if (!kind || !name) {
-    console.error("Please provide kind and name");
-    return;
-  }
-
-  try {
-    saving.value = true;
-
-    const replyRequest: ReplyRequest = {
-      raw: raw.value,
-      content: raw.value,
-      allowNotification: allowNotification.value,
-    };
-
-    if (props.reply) {
-      replyRequest.quoteReply = props.reply.metadata.name;
-    }
-
-    const { displayName, email, website } = customAccount.value;
-
-    if (!currentUser?.value && !allowAnonymousComments?.value) {
-      alert("请先登录");
-      return;
-    }
-
-    if (!currentUser?.value && allowAnonymousComments?.value) {
-      if (!displayName || !email) {
-        alert("请先登录或者完善信息");
-        return;
-      } else {
-        replyRequest.owner = {
-          displayName: displayName,
-          email: email,
-          website: website,
-        };
-      }
-    }
-
-    await apiClient.comment.createReply1({
-      name: props.comment?.metadata.name as string,
-      replyRequest,
+    Dialog.info({
+      title: "评论成功",
+      description: "请等待博主审核，审核通过后显示。",
+      showCancel: false,
     });
-    raw.value = "";
-
-    emit("created");
-  } catch (error) {
-    console.error("Failed to create comment reply", error);
-  } finally {
-    saving.value = false;
-  }
-};
-
-const handleLogout = async () => {
-  if (window.confirm("确定要退出登录吗？")) {
-    try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/logout`, undefined, {
-        withCredentials: true,
-      });
-
-      window.location.reload();
-    } catch (error) {
-      console.error("Failed to logout", error);
-    }
   }
 };
 
@@ -218,6 +119,13 @@ async function handleOpenEmojiPicker() {
   }
 
   emojiLoading.value = true;
+
+  if (!emojiData) {
+    alert("加载 Emoji 数据失败");
+    emojiLoading.value = false;
+    return;
+  }
+
   const data = await emojiData();
 
   if (!data) {
@@ -255,9 +163,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 // login
-const parentDomId = `#comment-${[group?.replaceAll(".", "-"), kind, name]
-  .join("-")
-  .replaceAll(/-+/g, "-")}`;
+const parentDomId = `#comment-${targetId}`;
 
 const loginUrl = `/console/login?redirect_uri=${encodeURIComponent(
   window.location.href + parentDomId
@@ -286,7 +192,7 @@ function handleOpenLoginPage() {
         class="grid grid-cols-1 items-center gap-2 sm:grid-cols-4"
       >
         <input
-          v-model="customAccount.displayName"
+          v-model="customAccount.author"
           class="rounded-base h-9 px-2 py-0.5 text-sm outline-none ring-1 ring-gray-300 dark:bg-slate-700 dark:text-slate-50 dark:ring-slate-600"
           type="text"
           placeholder="昵称"
@@ -298,80 +204,72 @@ function handleOpenLoginPage() {
           placeholder="电子邮件"
         />
         <input
-          v-model="customAccount.website"
+          v-model="customAccount.authorUrl"
           class="rounded-base h-9 px-2 py-0.5 text-sm outline-none ring-1 ring-gray-300 dark:bg-slate-700 dark:text-slate-50 dark:ring-slate-600"
           type="url"
           placeholder="网站"
         />
-
-        <a
-          class="select-none text-xs text-gray-600 transition-all hover:text-gray-900 dark:text-slate-200 dark:hover:text-slate-400"
-          :href="loginUrl"
-        >
-          （已有该站点的账号）
-        </a>
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <template v-if="currentUser">
-            <VAvatar
-              :src="currentUser.spec.avatar"
-              :alt="currentUser.spec.displayName"
-              size="sm"
-              circle
-            />
-            <span class="text-sm font-medium dark:text-slate-50">
-              {{ currentUser.spec.displayName }}
-            </span>
-            <VButton size="sm" @click="handleLogout">注销</VButton>
-          </template>
-          <template v-if="!currentUser && !allowAnonymousComments">
-            <VButton size="sm" @click="handleOpenLoginPage">登录</VButton>
-          </template>
-        </div>
-        <div class="flex flex-row items-center gap-3">
-          <div ref="emojiPickerRef" class="relative">
-            <VLoading v-if="emojiLoading" class="!p-0" />
-            <MdiStickerEmoji
-              v-else
-              class="h-5 w-5 cursor-pointer text-gray-500 transition-all hover:text-gray-900 dark:text-slate-300 dark:hover:text-slate-50"
-              @click="handleOpenEmojiPicker"
-            />
-            <transition
-              enter-active-class="transition duration-200 ease-out"
-              enter-from-class="translate-y-1 opacity-0"
-              enter-to-class="translate-y-0 opacity-100"
-              leave-active-class="transition duration-150 ease-in"
-              leave-from-class="translate-y-0 opacity-100"
-              leave-to-class="translate-y-1 opacity-0"
-            >
-              <div
-                v-show="emojiPickerVisible"
-                class="absolute right-0 z-10 mt-3 transform px-4 sm:px-0"
-              >
-                <Picker
-                  v-if="emojiIndex"
-                  :data="emojiIndex"
-                  :native="true"
-                  @select="onEmojiSelect"
-                />
-              </div>
-            </transition>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
           </div>
-          <VButton
-            :disabled="!raw"
-            type="secondary"
-            :loading="saving"
-            @click="handleSubmit"
-          >
-            <template #icon>
-              <MdiSendCircleOutline class="h-full w-full" />
-            </template>
-            提交评论
-          </VButton>
+          <div class="flex flex-row items-center gap-3">
+            <div ref="emojiPickerRef" class="relative">
+              <VLoading v-if="emojiLoading" class="!p-0" />
+              <MdiStickerEmoji
+                  v-else
+                  class="h-5 w-5 cursor-pointer text-gray-500 transition-all hover:text-gray-900 dark:text-slate-300 dark:hover:text-slate-50"
+                  @click="handleOpenEmojiPicker"
+              />
+              <transition
+                  enter-active-class="transition duration-200 ease-out"
+                  enter-from-class="translate-y-1 opacity-0"
+                  enter-to-class="translate-y-0 opacity-100"
+                  leave-active-class="transition duration-150 ease-in"
+                  leave-from-class="translate-y-0 opacity-100"
+                  leave-to-class="translate-y-1 opacity-0"
+              >
+                <div
+                    v-show="emojiPickerVisible"
+                    class="absolute right-0 z-10 mt-3 transform px-4 sm:px-0"
+                >
+                  <Picker
+                      v-if="emojiIndex"
+                      :data="emojiIndex"
+                      :native="true"
+                      @select="onEmojiSelect"
+                  />
+                </div>
+              </transition>
+            </div>
+            <VButton
+                :disabled="!raw"
+                type="secondary"
+                :loading="saving"
+                @click="handleSubmit"
+            >
+              <template #icon>
+                <MdiSendCircleOutline class="h-full w-full" />
+              </template>
+              提交评论
+            </VButton>
+          </div>
         </div>
+
       </div>
     </div>
   </div>
 </template>
+
+<style lang="css">
+.dialog-container .btn-md {
+  height: 1.75rem;
+  padding-left: .75rem;
+  padding-right: .75rem;
+  font-size: .75rem;
+  line-height: 1rem;
+}
+
+.dialog-container .btn-primary {
+  background-color: rgba(var(--colors-secondary),var(--tw-bg-opacity))!important;
+}
+</style>

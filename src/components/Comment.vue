@@ -9,58 +9,57 @@ import {
 import CommentItem from "./CommentItem.vue";
 import Form from "./Form.vue";
 import { computed, onMounted, provide, ref, type Ref } from "vue";
-import type { CommentVoList, User } from "@halo-dev/api-client";
-import { apiClient } from "../utils/api-client";
-import axios from "axios";
-import type { GlobalInfo } from "../types";
+import type { User } from "@halo-dev/api-client";
+import { apiClient } from "@/utils/api-client";
+import type { CommentVoList, commentTargets } from "@/types";
 import { useLocalStorage } from "@vueuse/core";
 
 const props = withDefaults(
   defineProps<{
-    kind: string;
-    name: string;
-    group: string;
+    target: commentTargets;
+    targetId: number;
     colorScheme?: "system" | "dark" | "light";
     emojiData: () => Promise<any>;
   }>(),
   {
-    kind: undefined,
-    name: undefined,
-    group: undefined,
     colorScheme: "light",
+    emojiData: undefined,
   }
 );
 
-provide<string>("kind", props.kind);
-provide<string>("name", props.name);
-provide<string>("group", props.group);
+provide<string>("target", props.target);
+provide<number>("targetId", props.targetId);
 provide<string>("colorScheme", props.colorScheme);
 provide<() => Promise<any>>("emojiData", props.emojiData);
 
 const currentUser = ref<User>();
+
 const comments = ref<CommentVoList>({
-  page: 1,
-  size: 20,
-  total: 0,
-  items: [],
-  first: true,
-  last: false,
+  hasContent: false,
   hasNext: false,
   hasPrevious: false,
-  totalPages: 0,
+  isEmpty: true,
+  isFirst: true,
+  page: 0,
+  pages: 1,
+  rpp: 0,
+  total: 0,
+  content: [],
 });
+const pageSize = ref(10);
 const loading = ref(false);
 
 provide<Ref<User | undefined>>("currentUser", currentUser);
 
 const handleFetchLoggedUser = async () => {
-  try {
-    const { data } = await apiClient.user.getCurrentUserDetail();
-    currentUser.value =
-      data.user.metadata.name === "anonymousUser" ? undefined : data.user;
-  } catch (error) {
-    console.error("Fetch logined user failed", error);
-  }
+  // currentUser.value = undefined;
+  // try {
+  //   const { data } = await apiClient.user.getCurrentUserDetail();
+  //   currentUser.value =
+  //     data.user.metadata.name === "anonymousUser" ? undefined : data.user;
+  // } catch (error) {
+  //   console.error("Fetch logined user failed", error);
+  // }
 };
 
 const handleFetchComments = async (mute?: boolean) => {
@@ -68,15 +67,15 @@ const handleFetchComments = async (mute?: boolean) => {
     if (!mute) {
       loading.value = true;
     }
-    const { data } = await apiClient.comment.listComments1({
-      page: comments.value.page,
-      size: comments.value.size,
-      kind: props.kind,
-      name: props.name,
-      group: props.group,
-      version: "v1alpha1",
-    });
-    comments.value = data;
+
+    apiClient.comment
+      .listTopComments(props.target, props.targetId, {
+        page: comments.value.page,
+        size: pageSize.value,
+      })
+      .then((response) => {
+        comments.value = response.data;
+      });
   } catch (error) {
     console.error("Failed to fetch comments", error);
   } finally {
@@ -92,7 +91,7 @@ const handlePaginationChange = ({
   size: number;
 }) => {
   comments.value.page = page;
-  comments.value.size = size;
+  pageSize.value = size;
   handleFetchComments();
 };
 
@@ -124,10 +123,10 @@ provide<Ref<Boolean | undefined>>(
 );
 
 const handleFetchValueOfAllowAnonymousComments = async () => {
-  const { data } = await axios.get<GlobalInfo>(`/actuator/globalinfo`, {
-    withCredentials: true,
-  });
-  allowAnonymousComments.value = data.allowAnonymousComments;
+  // const { data } = await axios.get<GlobalInfo>(`/actuator/globalinfo`, {
+  //   withCredentials: true,
+  // });
+  allowAnonymousComments.value = true;
 };
 
 onMounted(handleFetchValueOfAllowAnonymousComments);
@@ -140,7 +139,7 @@ provide<Ref<string[]>>("upvotedComments", upvotedComments);
 provide<Ref<string[]>>("upvotedReplies", upvotedReplies);
 </script>
 <template>
-  <div class="halo-comment-widget" :class="getColorScheme">
+  <div class="sonic-comment-widget" :class="getColorScheme">
     <Form @created="onCommentCreated" />
     <div class="comment-timeline mt-6">
       <div class="flex items-center">
@@ -158,7 +157,7 @@ provide<Ref<string[]>>("upvotedReplies", upvotedReplies);
         class="mt-4 flex flex-col divide-y divide-gray-100 dark:divide-slate-700"
       >
         <VLoading v-if="loading" class="dark:text-slate-100" />
-        <Transition v-else-if="!comments.items.length" appear name="fade">
+        <Transition v-else-if="!comments.content.length" appear name="fade">
           <VEmpty title="暂无评论" message="你可以尝试点击刷新或者添加新评论">
             <template #actions>
               <VSpace>
@@ -171,9 +170,11 @@ provide<Ref<string[]>>("upvotedReplies", upvotedReplies);
         </Transition>
         <TransitionGroup v-else appear name="fade" tag="div">
           <CommentItem
-            v-for="(comment, index) in comments.items"
+            v-for="(comment, index) in comments.content"
             :key="index"
             :comment="comment"
+            :target="props.target"
+            :target-id="props.targetId"
             @reload="handleFetchComments(true)"
           ></CommentItem>
         </TransitionGroup>
@@ -184,10 +185,10 @@ provide<Ref<string[]>>("upvotedReplies", upvotedReplies);
       class="my-4 sm:flex sm:items-center sm:justify-center"
     >
       <VPagination
-        :page="comments.page"
-        :size="comments.size"
-        :total="comments.total"
-        :size-options="[20, 30, 50, 100]"
+        :page="comments.value.page"
+        :size="pageSize.value"
+        :total="comments.value.total"
+        :size-options="[10, 20, 50, 100]"
         class="bg-transparent"
         @change="handlePaginationChange"
       />
