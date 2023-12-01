@@ -10,6 +10,13 @@
 > 2. 需要将`sonic-comment.css`和`sonic-comment.iife.js`放在相同目录下, 例如sonic的`upload`目录。
 > 
 > 3. 如果需要emoji表情，也需要将emoji/all.json也放在目录下
+> 
+> 4. [npm地址](https://www.npmjs.com/package/sonic-comment?activeTab=code)
+
+也可以使用CDN：
+```html
+<script src="https://cdn.jsdelivr.net/npm/sonic-comment@1.1.0/dist/sonic-comment.iife.js"></script>
+```
 
 ### 手动引入
 1. 无需手动引入css文件，只需引入vue3和`sonic-comment.iife.js`即可，js中会自动加载相同目录下的css文件。
